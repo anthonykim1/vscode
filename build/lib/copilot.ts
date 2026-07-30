@@ -97,15 +97,6 @@ const copilotOptionalNativePayloadDirs = [
 	'webview',
 ];
 
-/**
- * Optional payload directories nested under `prebuilds/<platform>/` that must not
- * ship in the product. Used by the app/remote packaging stream and by built-in
- * extension materialization (which copies the whole prebuilds tree).
- */
-const copilotOptionalPrebuildPayloadDirs = [
-	'mediaremote-adapter',
-];
-
 function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 	const files = [
 		'prebuilds/*/computer.node',
@@ -114,7 +105,8 @@ function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 		'prebuilds/*/Copilot Computer Use.app/**',
 		'prebuilds/*/CopilotComputerUse.exe',
 		'prebuilds/*/keytar.node',
-		...copilotOptionalPrebuildPayloadDirs.map(dir => `prebuilds/*/${dir}/**`),
+		// macOS voice media-pause helper; not needed in the product build.
+		'prebuilds/*/mediaremote-adapter/**',
 	];
 
 	if (platform !== 'win32') {
@@ -303,7 +295,9 @@ function materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch: s
 		sdkPrebuildsTarget,
 		`Copilot SDK native prebuilds for ${copilotPackagePlatformArch}`
 	);
-	pruneOptionalCopilotPrebuildPayloads(sdkPrebuildsTarget);
+	// Built-in materialization copies the whole prebuilds tree (not the gulp
+	// exclude globs above), so drop mediaremote-adapter explicitly afterward.
+	fs.rmSync(path.join(sdkPrebuildsTarget, 'mediaremote-adapter'), { recursive: true, force: true });
 
 	if (!copilotTgrepPlatforms.includes(tgrepPlatformArch)) {
 		return;
@@ -342,21 +336,5 @@ function pruneNonTargetCopilotSdkPrebuilds(targetPlatformArch: string, prebuilds
 			continue;
 		}
 		fs.rmSync(path.join(prebuildsDir, platformArch), { recursive: true, force: true });
-	}
-}
-
-/**
- * Removes optional payload directories nested under a materialized
- * `prebuilds/<platform>/` tree. Built-in extension packaging copies the whole
- * platform prebuilds directory, so it cannot rely on the gulp exclude globs
- * used by {@link getCopilotRuntimePrebuildFiles}.
- */
-function pruneOptionalCopilotPrebuildPayloads(prebuildsPlatformDir: string): void {
-	if (!fs.existsSync(prebuildsPlatformDir)) {
-		return;
-	}
-
-	for (const dir of copilotOptionalPrebuildPayloadDirs) {
-		fs.rmSync(path.join(prebuildsPlatformDir, dir), { recursive: true, force: true });
 	}
 }
