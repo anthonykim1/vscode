@@ -105,6 +105,10 @@ function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 		'prebuilds/*/Copilot Computer Use.app/**',
 		'prebuilds/*/CopilotComputerUse.exe',
 		'prebuilds/*/keytar.node',
+		// macOS voice media-pause helper (MediaRemote adapter). Optional and
+		// nested under prebuilds; keep it out of the product so universal
+		// merge does not need to special-case the framework binary tree.
+		'prebuilds/*/mediaremote-adapter/**',
 	];
 
 	if (platform !== 'win32') {
@@ -287,11 +291,16 @@ function materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch: s
 		throw new Error(`[prepareBuiltInCopilotRipgrepShim] Copilot platform package not found at ${platformPackageDir}`);
 	}
 
+	const sdkPrebuildsTarget = path.join(copilotBase, 'sdk', 'prebuilds', copilotPackagePlatformArch);
 	copyRequiredDirectory(
 		path.join(platformPackageDir, 'prebuilds', copilotPackagePlatformArch),
-		path.join(copilotBase, 'sdk', 'prebuilds', copilotPackagePlatformArch),
+		sdkPrebuildsTarget,
 		`Copilot SDK native prebuilds for ${copilotPackagePlatformArch}`
 	);
+	// Drop optional mediaremote-adapter tree after materialization. The
+	// platform package may ship it nested under prebuilds/<platform>/; VS Code
+	// does not need macOS voice media-pause detection in the product build.
+	fs.rmSync(path.join(sdkPrebuildsTarget, 'mediaremote-adapter'), { recursive: true, force: true });
 
 	if (!copilotTgrepPlatforms.includes(tgrepPlatformArch)) {
 		return;
