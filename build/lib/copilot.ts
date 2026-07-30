@@ -97,15 +97,6 @@ const copilotOptionalNativePayloadDirs = [
 	'webview',
 ];
 
-/**
- * Top-level directories under `prebuilds/<platform>/` excluded from the product.
- * Shared by app/remote packaging globs and built-in extension materialization.
- */
-const copilotOptionalPrebuildDirectories = [
-	// macOS voice media-pause helper; not needed in the product build.
-	'mediaremote-adapter',
-];
-
 function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 	const files = [
 		'prebuilds/*/computer.node',
@@ -114,7 +105,8 @@ function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 		'prebuilds/*/Copilot Computer Use.app/**',
 		'prebuilds/*/CopilotComputerUse.exe',
 		'prebuilds/*/keytar.node',
-		...copilotOptionalPrebuildDirectories.map(dir => `prebuilds/*/${dir}/**`),
+		// macOS voice media-pause helper; not needed in the product build.
+		'prebuilds/*/mediaremote-adapter/**',
 	];
 
 	if (platform !== 'win32') {
@@ -297,12 +289,15 @@ function materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch: s
 		throw new Error(`[prepareBuiltInCopilotRipgrepShim] Copilot platform package not found at ${platformPackageDir}`);
 	}
 
+	const sdkPrebuildsTarget = path.join(copilotBase, 'sdk', 'prebuilds', copilotPackagePlatformArch);
 	copyRequiredDirectory(
 		path.join(platformPackageDir, 'prebuilds', copilotPackagePlatformArch),
-		path.join(copilotBase, 'sdk', 'prebuilds', copilotPackagePlatformArch),
-		`Copilot SDK native prebuilds for ${copilotPackagePlatformArch}`,
-		copilotOptionalPrebuildDirectories,
+		sdkPrebuildsTarget,
+		`Copilot SDK native prebuilds for ${copilotPackagePlatformArch}`
 	);
+	// Built-in materialization copies the whole prebuilds tree (not the gulp
+	// exclude globs above), so drop mediaremote-adapter explicitly afterward.
+	fs.rmSync(path.join(sdkPrebuildsTarget, 'mediaremote-adapter'), { recursive: true, force: true });
 
 	if (!copilotTgrepPlatforms.includes(tgrepPlatformArch)) {
 		return;
@@ -321,25 +316,14 @@ function materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch: s
 	);
 }
 
-function copyRequiredDirectory(source: string, target: string, description: string, excludeTopLevelDirs: readonly string[] = []): void {
+function copyRequiredDirectory(source: string, target: string, description: string): void {
 	if (!fs.existsSync(source)) {
 		throw new Error(`[prepareBuiltInCopilotRipgrepShim] ${description} not found at ${source}`);
 	}
 
-	const excluded = new Set(excludeTopLevelDirs);
 	fs.rmSync(target, { recursive: true, force: true });
 	fs.mkdirSync(path.dirname(target), { recursive: true });
-	fs.cpSync(source, target, {
-		recursive: true,
-		filter: src => {
-			if (excluded.size === 0 || src === source) {
-				return true;
-			}
-			const relative = path.relative(source, src);
-			const topLevel = relative.split(path.sep)[0];
-			return !excluded.has(topLevel);
-		},
-	});
+	fs.cpSync(source, target, { recursive: true });
 }
 
 function pruneNonTargetCopilotSdkPrebuilds(targetPlatformArch: string, prebuildsDir: string, platformArchs: string[]): void {
