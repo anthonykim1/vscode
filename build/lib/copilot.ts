@@ -97,6 +97,15 @@ const copilotOptionalNativePayloadDirs = [
 	'webview',
 ];
 
+/**
+ * Optional payload directories nested under `prebuilds/<platform>/` that must not
+ * ship in the product. Used by the app/remote packaging stream and by built-in
+ * extension materialization (which copies the whole prebuilds tree).
+ */
+const copilotOptionalPrebuildPayloadDirs = [
+	'mediaremote-adapter',
+];
+
 function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 	const files = [
 		'prebuilds/*/computer.node',
@@ -105,10 +114,7 @@ function getCopilotOptionalNativePayloadFiles(platform: string): string[] {
 		'prebuilds/*/Copilot Computer Use.app/**',
 		'prebuilds/*/CopilotComputerUse.exe',
 		'prebuilds/*/keytar.node',
-		// macOS voice media-pause helper (MediaRemote adapter). Optional and
-		// nested under prebuilds; keep it out of the product so universal
-		// merge does not need to special-case the framework binary tree.
-		'prebuilds/*/mediaremote-adapter/**',
+		...copilotOptionalPrebuildPayloadDirs.map(dir => `prebuilds/*/${dir}/**`),
 	];
 
 	if (platform !== 'win32') {
@@ -297,10 +303,7 @@ function materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch: s
 		sdkPrebuildsTarget,
 		`Copilot SDK native prebuilds for ${copilotPackagePlatformArch}`
 	);
-	// Drop optional mediaremote-adapter tree after materialization. The
-	// platform package may ship it nested under prebuilds/<platform>/; VS Code
-	// does not need macOS voice media-pause detection in the product build.
-	fs.rmSync(path.join(sdkPrebuildsTarget, 'mediaremote-adapter'), { recursive: true, force: true });
+	pruneOptionalCopilotPrebuildPayloads(sdkPrebuildsTarget);
 
 	if (!copilotTgrepPlatforms.includes(tgrepPlatformArch)) {
 		return;
@@ -339,5 +342,21 @@ function pruneNonTargetCopilotSdkPrebuilds(targetPlatformArch: string, prebuilds
 			continue;
 		}
 		fs.rmSync(path.join(prebuildsDir, platformArch), { recursive: true, force: true });
+	}
+}
+
+/**
+ * Removes optional payload directories nested under a materialized
+ * `prebuilds/<platform>/` tree. Built-in extension packaging copies the whole
+ * platform prebuilds directory, so it cannot rely on the gulp exclude globs
+ * used by {@link getCopilotRuntimePrebuildFiles}.
+ */
+function pruneOptionalCopilotPrebuildPayloads(prebuildsPlatformDir: string): void {
+	if (!fs.existsSync(prebuildsPlatformDir)) {
+		return;
+	}
+
+	for (const dir of copilotOptionalPrebuildPayloadDirs) {
+		fs.rmSync(path.join(prebuildsPlatformDir, dir), { recursive: true, force: true });
 	}
 }
